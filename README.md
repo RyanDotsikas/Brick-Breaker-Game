@@ -1,2 +1,16 @@
-# Brick-Breaker-Game
-A brick breaker game where you can design your own levels as an admin, and play all user-created levels as a player. Created using model-based programming techniques such as class diagrams and state machines with Umple.
+# Thicc Blocks (ECSE 223 Project)
+
+This repository holds the source code for the ECSE 223 group project.
+
+## Prerequisites
+
+Thicc blocks runs on Java JDK 11 and utilizes gradle for managing dependencies. It also utilizes umple for model generation. If using eclipse, plugins for gradle (Buildship) and umple can be utilized. 
+
+## Running Code
+
+Gradle commands can be utilized to build and run the application, or you can use the eclipse plugin.
+
+```
+gradlew build
+gradlew run
+```

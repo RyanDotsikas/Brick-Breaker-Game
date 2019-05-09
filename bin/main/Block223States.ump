@@ -1,0 +1,377 @@
+class PlayedGame {
+
+  // State Machine
+  
+  playStatus {
+    Ready {
+      entry / { doSetup(); }
+      play -> Moving;
+    }
+    Moving {
+      pause -> Paused;
+      move [hitPaddle()] / { doHitPaddleOrWall(); } -> Moving;
+      move [isOutOfBoundsAndLastLife()] / { doOutOfBounds(); } -> GameOver;
+      move [isOutOfBounds()] / { doOutOfBounds(); } -> Paused;
+      move [hitLastBlockAndLastLevel()] / { doHitBlock(); } -> GameOver;
+      move [hitLastBlock()] / { doHitBlockNextLevel(); } -> Ready;
+      move [hitBlock()] / { doHitBlock(); } -> Moving;
+      move [hitWall()] / { doHitPaddleOrWall(); } -> Moving;
+      move / { doHitNothingAndNotOutOfBounds(); } -> Moving;
+    }
+    Paused {
+      play -> Moving;
+    }
+    GameOver {
+      entry / { doGameOver(); }
+    }
+  }
+  
+  // Guards
+  
+  private boolean hitPaddle() {
+    BouncePoint bp = this.calculateBouncePointPaddle();
+    this.setBounce(bp);
+    return bp != null;
+  }
+  
+  private boolean isBallOutOfBounds() {
+  	return getCurrentBallY() >= 390;
+  }
+  
+
+  private boolean isOutOfBoundsAndLastLife() {
+    boolean outOfBounds = false;
+    if(lives == 1) {
+    	outOfBounds = isBallOutOfBounds();
+    }
+    
+    return outOfBounds;
+  }
+  
+  private boolean isOutOfBounds() {
+    return isBallOutOfBounds();
+  }
+  
+  private boolean hitLastBlockAndLastLevel() {
+    
+    Game game = getGame();
+    
+    int nrLevels = game.numberOfLevels();
+    
+    setBounce(null);
+    
+    if(nrLevels == currentLevel){
+    	int nrBlocks = numberOfBlocks();
+    	
+    	if(nrBlocks == 1){
+    		PlayedBlockAssignment block = getBlock(0);
+    		BouncePoint bp = calculateBouncePointBlock(block);
+    		setBounce(bp);
+    		return bp!=null;
+    	}
+    }
+    return false; 
+  }
+
+  private BouncePoint calculateBouncePointBlock(PlayedBlockAssignment block) {
+    int ballRadius = 5;
+
+    Double oldBallX = this.currentBallX;
+    Double oldBallY = this.currentBallY;
+
+    Double ballDirX = this.ballDirectionX;
+    Double ballDirY = this.ballDirectionY;
+
+    Double newBallX = oldBallX  + ballDirX;
+    Double newBallY = oldBallY + ballDirY;
+
+    Double blockX = Double.valueOf(block.getX());
+    Double blockY = Double.valueOf(block.getY());
+    Double blockSize = Double.valueOf(block.getBlock().SIZE);
+
+    Rectangle2D blockRectangle = new Rectangle2D.Double(blockX - ballRadius, blockY - ballRadius,
+        blockSize + 2 * ballRadius, blockSize + 2 * ballRadius);
+    if (blockRectangle.intersectsLine(oldBallX,oldBallY,newBallX,newBallY)){
+      //top
+      BouncePoint zoneA = checkLineIntersections(oldBallX, oldBallY, newBallX, newBallY, blockX, blockY-ballRadius, blockX+blockSize, blockY-ballRadius, BounceDirection.FLIP_Y);
+
+      //left
+      BouncePoint zoneB = checkLineIntersections(oldBallX, oldBallY, newBallX, newBallY, blockX-ballRadius, blockY, blockX-ballRadius, blockY+blockSize, BounceDirection.FLIP_X);
+
+      //right
+      BouncePoint zoneC = checkLineIntersections(oldBallX, oldBallY, newBallX, newBallY, blockX+ballRadius+blockSize, blockY, blockX+ballRadius+blockSize, blockY+blockSize, BounceDirection.FLIP_X);
+
+      //bottom
+      BouncePoint zoneD = checkLineIntersections(oldBallX, oldBallY, newBallX, newBallY, blockX, blockY+blockSize+ballRadius, blockX+blockSize, blockY+blockSize+ballRadius, BounceDirection.FLIP_Y);
+
+      // Circle equation: (x-a)^2 + (y-b)^2 = r^2
+      Double a;
+      Double b;
+      Double r = Double.valueOf(ballRadius);
+
+      // Line Equation: y = mx + c
+      Double m = (newBallY-oldBallY)/(newBallX-oldBallX);
+      Double c = oldBallY - m*oldBallX;
+
+      //TopLeftCorner
+      a=blockX;
+      b=blockY;
+      BouncePoint [] zoneE = checkCircleLineIntersection(a,b,r,m,c,oldBallX,oldBallY,newBallX,newBallY, ballDirectionX, true);
+
+      //TopRightCorner
+      a=blockX+blockSize;
+      b=blockY;
+      BouncePoint [] zoneF = checkCircleLineIntersection(a,b,r,m,c,oldBallX,oldBallY,newBallX,newBallY, ballDirectionX, false);
+
+      //BottomLeftCorner
+      a=blockX;
+      b=blockY+blockSize;
+      BouncePoint [] zoneG = checkCircleLineIntersection(a,b,r,m,c,oldBallX,oldBallY,newBallX,newBallY, ballDirectionX, true);
+
+      //BottomRightCorner
+      a=blockX + blockSize;
+      b=blockY + blockSize;
+      BouncePoint [] zoneH = checkCircleLineIntersection(a,b,r,m,c,oldBallX,oldBallY,newBallX,newBallY, ballDirectionX, false);
+
+      // Find closest intersection point
+      BouncePoint[] allZonesList = { zoneA, zoneB, zoneC, zoneD, zoneE[0], zoneE[1], zoneF[0], zoneF[1],
+                                    zoneG[0], zoneG[1], zoneH[0], zoneH[1] };
+      Double minDistance = Double.MAX_VALUE;
+      BouncePoint finalBP = null;
+      for (int i = 0; i < allZonesList.length; i++) {
+        if (allZonesList[i] != null) {
+          Double distance = Math.sqrt(Math.pow(Math.abs(oldBallX - allZonesList[i].getX()), 2)
+              + Math.pow(Math.abs(oldBallY - allZonesList[i].getY()), 2));
+          if (distance < minDistance) {
+            minDistance = distance;
+            finalBP = allZonesList[i];
+          }
+        }
+      }
+      if(finalBP!=null && (Math.abs(finalBP.getX() - newBallX)>0.000001 && Math.abs(finalBP.getY() - newBallY)>0.000001)) {
+          finalBP.setHitBlock(block);
+          return finalBP;
+      }
+    }
+    return null;
+
+
+
+  };
+
+
+  private void doHitBlock() {
+    int score = getScore();
+    BouncePoint bounce = getBounce();
+    
+    PlayedBlockAssignment pblock = bounce.getHitBlock();
+    
+    Block block = pblock.getBlock();
+    
+    int points = block.getPoints();
+    
+    setScore(score+points);
+    
+    pblock.delete();
+    
+    bounceBall();
+  }
+  
+  private boolean hitLastBlock(){
+    int nrBlocks = numberOfBlocks();
+
+    setBounce(null);
+
+    if(nrBlocks ==1){
+        PlayedBlockAssignment block = getBlock(0);
+
+        BouncePoint bp = calculateBouncePointBlock(block);
+        
+        setBounce(bp);
+        return bp!=null;
+    }
+    return false;
+  }
+
+  private void doHitBlockNextLevel() {
+    doHitBlock();
+  	int level = getCurrentLevel();
+  	setCurrentLevel(level+1);
+  	
+  	setCurrentPaddleLength(getGame().getPaddle().getMaxPaddleLength()-
+  	(getGame().getPaddle().getMaxPaddleLength()-getGame().getPaddle().getMinPaddleLength())/
+  	(getGame().numberOfLevels()-1)*(getCurrentLevel()-1));
+  	
+  	setWaitTime(Math.pow(INITIAL_WAIT_TIME * getGame().getBall().getBallSpeedIncreaseFactor(),(getCurrentLevel()-1)));
+  }
+  
+  private boolean isCloser(BouncePoint first, BouncePoint second) {
+
+    if (first == null) {
+      return false;
+    } else if (second == null) {
+      return true;
+    } else {
+      // ball position
+      double xPos = getCurrentBallX();
+      double yPos = getCurrentBallY();
+
+      double deltaDistFirst = euclideanDistance(xPos, yPos, first.getX(), first.getY());
+      double deltaDistSecond = euclideanDistance(xPos, yPos, second.getX(), second.getY());
+
+      if (deltaDistFirst <= deltaDistSecond) {
+        return true;
+      } else {
+        return false;
+      }
+    }
+
+  }
+
+  public double euclideanDistance(double x1,double y1, double x2, double y2){
+    double deltaX = Math.pow(x1-x2,2);
+    double deltaY = Math.pow(y1-y2,2);
+    return Math.sqrt(deltaX+deltaY);
+  }
+  
+  private boolean hitBlock() {
+    int nrBlocks = numberOfBlocks();
+    setBounce(null);
+    
+    for(int i =0; i<numberOfBlocks(); i++){
+    	PlayedBlockAssignment block = getBlock(i);
+    	BouncePoint bp = calculateBouncePointBlock(block);
+    	BouncePoint bounce = getBounce();
+    	boolean closer = isCloser(bp,bounce);
+    	
+    	if(closer){
+    		setBounce(bp);
+    	}
+    }
+    
+    
+    return getBounce()!=null;
+  }
+  
+  private boolean hitWall() {
+    BouncePoint bp = this.calculateBouncePointWall();
+    this.setBounce(bp);
+    return bp != null;
+  }
+  
+  // Actions
+  
+  private void doSetup(){
+    resetCurrentBallX();
+    resetCurrentBallY();
+    resetBallDirectionX();
+    resetBallDirectionY();
+    resetCurrentPaddleX();
+    
+    Game game = getGame();
+
+    Level level = game.getLevel(currentLevel - 1);
+
+    List<BlockAssignment> assignments = level.getBlockAssignments();
+
+    for (BlockAssignment a : assignments) {
+
+      PlayedBlockAssignment pBlock = new PlayedBlockAssignment(
+        Game.WALL_PADDING + (Block.SIZE + Game.COLUMNS_PADDING) * (a.getGridHorizontalPosition() - 1),
+        Game.WALL_PADDING + (Block.SIZE + Game.ROW_PADDING) * (a.getGridVerticalPosition() - 1),
+        a.getBlock(), this
+      );
+
+    }
+
+    // Get block maximum
+    int[] x_y_capacity = Game.getMaxBlockCapacity();
+
+    int xmin = 1;
+    int xmax = x_y_capacity[0];
+
+    int ymin = 1;
+    int ymax = x_y_capacity[1] - 2;
+
+    System.out.println("xmax = " + xmax + ", ymax = " + ymax);
+
+    Random rand = new Random();
+
+    // Fill up the remaining blocks
+    while (numberOfBlocks() < game.getNrBlocksPerLevel()) {
+
+      // Generate a random grid horizontal and verticle positions
+      int x = xmin + rand.nextInt(xmax - xmin + 1);
+      int y = ymin + rand.nextInt(ymax - ymin + 1);
+
+      boolean found = false;
+
+      // Find a suitable x, y location
+      while (!found) {
+        found = true;
+
+        // Convert to x and y to played block format
+        int xa = Game.WALL_PADDING + (Block.SIZE + Game.COLUMNS_PADDING) * (x - 1);
+        int ya = Game.WALL_PADDING + (Block.SIZE + Game.ROW_PADDING) * (y - 1);
+
+        for (PlayedBlockAssignment a : blocks) {
+          if (a.getX() == xa && a.getY() == ya) {
+            found = false;
+            break;
+          }
+        }
+
+        if (!found) {
+
+          // Loop-back to next row
+          if (x == xmax) {
+            y = (y % ymax) + 1;
+          }
+
+          // Advance to next column
+          x = (x % xmax) + 1;
+
+        // Found a location, update x and y to be in screen coordinates
+        } else {
+          x = xa;
+          y = ya;
+        }
+      }
+
+      PlayedBlockAssignment pBlock = new PlayedBlockAssignment(x, y, game.getRandomBlock(), this);
+    }
+  }
+  
+  private void doHitPaddleOrWall() {
+    this.bounceBall();
+  }
+
+  private void doOutOfBounds() {
+    setLives(lives - 1);
+    resetCurrentBallX();
+    resetCurrentBallY();
+    resetBallDirectionX();
+    resetBallDirectionY();
+    resetCurrentPaddleX();
+  }
+
+
+  private void doHitNothingAndNotOutOfBounds() {
+  	setCurrentBallX(currentBallX + ballDirectionX);
+    setCurrentBallY(currentBallY + ballDirectionY);
+  }
+
+  private void doGameOver() {
+    Block223 block223 = getBlock223();
+    Player p = getPlayer();
+    
+    if(p != null) {
+    	Game game = getGame();
+    	HallOfFameEntry hof = new HallOfFameEntry(score, playername, p, game, block223);
+    	game.setMostRecentEntry(hof);
+    }
+    
+    delete();
+  }
+
+}
